@@ -2,13 +2,15 @@
 
 ## A Low-Overhead Compile-Once Graph Execution Engine for Multi-Agent Systems
 
-Kye Gomez, Swarms, August 2026
+Kye Gomez, Adi Chaudhary, Ayaan Gazali, and Steve-Dusty Wyatt Stanke  
+Swarms, August 2026  
+Correspondence: [kye@swarms.world](mailto:kye@swarms.world)
 
-[Read the full paper (PDF)](./main.pdf) | [Explore the paper examples](./examples/)
+[Read the full paper (PDF)](./main.pdf) | [Explore the examples](./examples/) | [Inspect the benchmarks](./benchmarks/)
 
 GraphWorkflow is the graph orchestration engine in the open-source [Swarms](https://github.com/kyegomez/swarms) framework. It is designed for static directed acyclic graphs of agents that are compiled once and executed many times. Compilation performs structural analysis, validation, adjacency materialization, and execution-plan generation. Runtime execution then sweeps the frozen plan with minimal orchestration work.
 
-This repository contains the paper and its companion code examples.
+This repository contains the paper, companion code examples, benchmark harness, raw benchmark samples, and generated result summaries.
 
 ## Abstract
 
@@ -115,6 +117,8 @@ Headline results against LangGraph 1.0.4:
 
 The paper attributes these differences to frozen-plan execution, the singleton-layer inline path, one shared pool, and the absence of channel and superstep machinery on the static-DAG hot path.
 
+The complete benchmark artifacts are included in [`benchmarks/`](./benchmarks/). This makes it possible to inspect the harness, methodology, provenance, raw samples, and generated summaries without extracting them from the paper.
+
 ## Code Examples
 
 The [`examples`](./examples/) directory contains companion artifacts from the paper:
@@ -163,15 +167,29 @@ The workflow returns a dictionary keyed by node name:
 
 To study the corresponding LangGraph construction, see [`diamond_langgraph.py`](./examples/diamond_langgraph.py). That listing focuses on the framework-specific graph and state setup shown in the paper and assumes the four agent objects have already been created.
 
+## Benchmark Artifacts
+
+The [`benchmarks`](./benchmarks/) directory includes:
+
+- [`benchmarks/README.md`](./benchmarks/README.md), which documents measured phases, topology definitions, methodology, fairness controls, and known limitations
+- [`graph_workflow_bench.py`](./benchmarks/graph_workflow_bench.py), the benchmark harness used to compare GraphWorkflow with LangGraph
+- [`plot_results.py`](./benchmarks/plot_results.py), the script used to render benchmark figures
+- [`results/latest.json`](./benchmarks/results/latest.json), containing raw samples, aggregate statistics, and environment provenance for the headline evaluation
+- [`results/latest.md`](./benchmarks/results/latest.md), a readable summary of the complete result grid
+- [`results/langgraph_counter_reducer.json`](./benchmarks/results/langgraph_counter_reducer.json), containing the raw counter-reducer ablation
+- [`results/langgraph_counter_reducer.md`](./benchmarks/results/langgraph_counter_reducer.md), containing the readable ablation summary
+
+The harness measures import, build, compile, first-run, and steady-run costs. It also derives total cold-start latency and the number of repeated executions required to offset an import-time disadvantage. Import timing uses a fresh subprocess and subtracts bare Python interpreter startup.
+
 ## Reproducing the Benchmarks
 
-The benchmark implementation lives in the main [Swarms repository](https://github.com/kyegomez/swarms) under:
+The benchmark harness is maintained in the main [Swarms repository](https://github.com/kyegomez/swarms) under:
 
 ```text
 tests/benchmarks/graph_workflow_benchmarks/
 ```
 
-From a Swarms checkout, the paper's reproduction workflow is:
+Run the benchmark from a Swarms checkout so the harness measures the checked-out `swarms` source rather than an unrelated installed package:
 
 ```bash
 # Run the complete benchmark suite
@@ -192,6 +210,27 @@ tectonic main.tex
 
 You can also consult the exact Appendix C recipe in [`examples/reproduce_benchmarks.sh`](./examples/reproduce_benchmarks.sh).
 
+For benchmark-only usage, available options include:
+
+```bash
+# Quick topology-specific pass
+python3 tests/benchmarks/graph_workflow_benchmarks/graph_workflow_bench.py \
+  --sizes 10,50 \
+  --repeats 3 \
+  --topologies diamond
+
+# Capture two revisions and visualize the comparison
+python3 tests/benchmarks/graph_workflow_benchmarks/graph_workflow_bench.py \
+  --out tests/benchmarks/graph_workflow_benchmarks/results/before.json
+
+python3 tests/benchmarks/graph_workflow_benchmarks/graph_workflow_bench.py \
+  --out tests/benchmarks/graph_workflow_benchmarks/results/after.json
+
+python3 tests/benchmarks/graph_workflow_benchmarks/plot_results.py \
+  tests/benchmarks/graph_workflow_benchmarks/results/after.json \
+  --baseline tests/benchmarks/graph_workflow_benchmarks/results/before.json
+```
+
 The published evaluation environment was:
 
 - macOS 15.7.7 on ARM64
@@ -210,7 +249,7 @@ GraphWorkflow currently favors predictable static plans over dynamic control flo
 
 ## Paper
 
-The complete 21-page manuscript includes the formal execution model, correctness argument, compilation complexity proof, scheduler design, backend implementation, complete benchmark methodology, distributional statistics, reducer ablation, limitations, and reproduction guide.
+The complete 22-page manuscript includes the formal execution model, correctness argument, compilation complexity proof, scheduler design, backend implementation, complete benchmark methodology, distributional statistics, reducer ablation, limitations, and reproduction guide.
 
 **[Download or view `main.pdf`](./main.pdf)**
 
@@ -221,13 +260,13 @@ If this work is useful in your research, please cite:
 ```bibtex
 @article{gomez2026graphworkflow,
   title   = {GraphWorkflow: A Low-Overhead Compile-Once Graph Execution Engine for Multi-Agent Systems},
-  author  = {Gomez, Kye},
+  author  = {Gomez, Kye and Chaudhary, Adi and Gazali, Ayaan and Stanke, Steve-Dusty Wyatt},
   year    = {2026},
   month   = {August},
-  note    = {Swarms}
+  note    = {Swarms. Code and reproducibility artifacts available at \url{https://github.com/kyegomez/swarms}}
 }
 ```
 
 ## License
 
-See [`LICENSE`](./LICENSE) for the repository's license terms.
+This repository is released under the Apache License 2.0. See [`LICENSE`](./LICENSE) for the complete terms.
