@@ -1,5 +1,7 @@
 # GraphWorkflow: A Low-Overhead Compile-Once Graph Execution Engine for Multi-Agent Systems
 
+![Graphworkflow Image](img.jpeg)
+
 Kye Gomez, Adi Chaudhary, Ayaan Gazali, and Steve-Dusty Wyatt Stanke  
 Swarms, August 2026  
 Correspondence: [kye@swarms.world](mailto:kye@swarms.world)
