@@ -1,281 +1,233 @@
-# GraphWorkflow: A Low-Overhead Compile-Once Graph Execution Engine for Multi-Agent Systems
+# GraphWorkflow
 
-<p align="center">
-  <em>A reproducible research artifact accompanying the Swarms framework.</em>
-</p>
+## A Low-Overhead Compile-Once Graph Execution Engine for Multi-Agent Systems
 
----
+Kye Gomez, Swarms, August 2026
 
-## Overview
+[Read the full paper (PDF)](./main.pdf) | [Explore the paper examples](./examples/)
 
-**GraphWorkflow** is the graph orchestration engine of the open-source [Swarms](https://github.com/kyegomez/swarms) framework. This repository contains the paper, benchmark harness, analysis scripts, and reproduction artifacts for the study:
+GraphWorkflow is the graph orchestration engine in the open-source [Swarms](https://github.com/kyegomez/swarms) framework. It is designed for static directed acyclic graphs of agents that are compiled once and executed many times. Compilation performs structural analysis, validation, adjacency materialization, and execution-plan generation. Runtime execution then sweeps the frozen plan with minimal orchestration work.
 
-> **GraphWorkflow: A Low-Overhead Compile-Once Graph Execution Engine for Multi-Agent Systems**
-> Kye Gomez · Swarms · August 2026
+This repository contains the paper and its companion code examples.
 
-Multi-agent systems built on large language models (LLMs) are increasingly structured as directed acyclic graphs (DAGs) of agents, where each node performs one model invocation and each edge carries intermediate results. Existing orchestrators (e.g., LangGraph) treat their own overhead as negligible—an assumption that fails in three regimes:
+## Abstract
 
-1. **Cold start** of short-lived processes,
-2. **High-frequency re-execution** of compiled workflows,
-3. **Graphs whose width or depth reaches hundreds of nodes.**
+Large language model agent workflows are often represented as directed acyclic graphs, where nodes invoke agents and edges carry intermediate results. Framework overhead can become significant during cold starts, repeated execution, and workflows containing hundreds of nodes.
 
-GraphWorkflow addresses these regimes with a **compile-once, sweep-many** design: an explicit compilation phase computes topological generations, materializes adjacency maps in a single pass, validates the graph structurally, and freezes a per-layer execution plan of resolved `(node, agent)` tuples. The runtime then executes each layer as a wavefront over a single lazily created thread pool, with an inline fast path for single-node layers.
+GraphWorkflow uses a compile-once, sweep-many architecture. Its compilation phase computes topological generations, materializes adjacency maps in one pass, validates graph structure, and freezes a layer-by-layer execution plan. The runtime executes that plan as a wavefront over one lazily created thread pool, with an inline fast path for layers containing a single node. A backend interface supports both NetworkX and the Rust-based rustworkx library while keeping backend operations off the runtime hot path.
 
----
+Across 15 benchmark configurations covering five graph topologies and sizes from 10 to 200 nodes, GraphWorkflow achieved:
 
-## Key Results
+- **7.0x geometric-mean steady-state speedup** over LangGraph 1.0.4 with the NetworkX backend
+- **7.2x geometric-mean steady-state speedup** with the rustworkx backend
+- **Up to 62.5x faster steady-state execution** on a 200-node chain
+- **21.6x to 31.3x faster compilation**
+- **7.9x to 8.7x faster first-run execution**, including build, compile, and one run
 
-Against **LangGraph 1.0.4** across 15 topology–size configurations (5 topologies × 3 sizes, with no-op agents so every measured microsecond is framework overhead):
+All performance measurements use no-op nodes, so the reported times isolate orchestration overhead rather than model latency.
 
-| Phase | GraphWorkflow (networkx) | GraphWorkflow (rustworkx) |
-| :--- | :---: | :---: |
-| Build (geomean speedup) | **2.4×** | **2.7×** |
-| Compile (geomean speedup) | **21.6×** | **31.3×** |
-| First run / cold path (geomean) | **7.9×** | **8.7×** |
-| Steady-state run (geomean) | **7.0×** | **7.2×** |
-| Steady-state run (max, 200-node chain) | **62.5×** | **55.9×** |
+## Core Contributions
 
-- 200-node chain: GraphWorkflow executes in **0.29 ms** vs. LangGraph's **18.15 ms**.
-- 200-node compile: GraphWorkflow in **0.26–0.44 ms** vs. LangGraph's **12.57 ms**.
-- Per-node inline dispatch cost: **≈ 1.5 μs** (GraphWorkflow) vs. **≈ 90.7 μs** per superstep (LangGraph).
+### Compile-once execution
 
----
+GraphWorkflow moves reusable graph analysis out of the run loop. Compilation:
 
-## Contributions
+1. Infers entry and exit nodes from graph degrees.
+2. Computes topological generations with linear complexity.
+3. Materializes successor and predecessor maps in one edge-list pass.
+4. Validates acyclicity, reachability, executables, and graph structure.
+5. Resolves each node into a frozen per-layer execution plan.
+6. Caches compiled artifacts until a graph mutation invalidates them.
 
-The paper makes four contributions:
+Compilation runs in `O(N + M)` time and space for `N` nodes and `M` edges.
 
-1. **A cost taxonomy for agent orchestration** — four measurable lifecycle phases (build, compile, first run, steady run) and a per-node plus per-layer overhead model that turns benchmark topologies into probes of individual mechanisms.
-2. **The design of a compile-once graph engine** — a backend abstraction, a compilation pipeline with single-pass adjacency materialization and validation by multi-source reachability, a frozen execution plan, and a layer-wavefront scheduler with a shared lazy thread pool and an inline single-node fast path; plus per-layer checkpointing, nested subgraphs, and multi-loop refinement.
-3. **A formal account of the execution model** — layered execution respects dependency order, compilation is `O(V + E)`, and the layer-barrier runtime connects to work-span scheduling bounds.
-4. **A reproducible evaluation** — harness, raw samples, analysis scripts, and figures are released; results are medians of 9 samples with 95% confidence intervals, and each measured gap is attributed to a specific architectural cause.
+### Low-overhead scheduling
 
----
+The runtime does not traverse the graph or consult the selected graph backend. It executes the precomputed layers directly:
+
+- Singleton layers run inline on the caller thread.
+- Parallel layers share one lazily created thread pool per run.
+- The pool is capped by the widest layer and the configured worker limit.
+- Results are collected as tasks complete.
+- Errors are contained as node outputs so sibling work can finish.
+- Checkpoints and callbacks are pay-for-use features.
+
+### Pluggable graph backends
+
+The same workflow can use:
+
+- **NetworkX**, the default Python graph implementation
+- **rustworkx**, an optional Rust-backed implementation that accelerates graph analysis
+
+The backend affects graph construction and compilation only. Once compiled, execution uses the same backend-independent frozen plan.
+
+### Simpler static-DAG programming model
+
+For static agent workflows, GraphWorkflow treats agents as nodes and edges as dataflow. Compared with the equivalent LangGraph example, it does not require:
+
+- A shared typed-state schema
+- Reducer annotations for fan-in
+- Wrapper functions around every agent
+- Explicit `START` and `END` edges
+- An explicit compilation call before execution
+- A recursion-limit override for deep graphs
+
+This design is intentionally scoped to static DAGs. Workflows requiring conditional edges, runtime cycles, mid-graph interrupts, or general durable superstep execution may be better served by LangGraph.
 
 ## Architecture
 
-GraphWorkflow separates the graph lifecycle into an explicit **compilation phase** and a minimal **execution phase**. Construction mutates declarative state and the backend graph; `compile()` distills both into cached artifacts; the run engine touches only the frozen execution plan and the predecessor map, never the backend.
+The workflow lifecycle has three states:
 
-```
-construction & lifecycle API          declarative state              compiled artifacts (cached)
-add_node / add_edge                   nodes: Dict[str, Node]          _sorted_layers
-add_edges_from_source                 edges: List[Edge]              _execution_plan (frozen tuples)
-add_parallel_chain                     entry / end points             succ. / pred. maps
-from_spec / to_json                    ─────────────                  ─────────────
-compile()                              GraphBackend interface         execution engine (backend-free)
-run / arun                             (add_node, add_edge,           layer sweep, frozen plan
-                                       degrees, predecessors,        shared lazy pool
-                                       generations, descendants,     min(p, max_i |L_i|)
-                                       is_dag, adjacency)            inline path (|L_i| = 1)
-                                              │                              │
-                                       ┌──────────────┴──────────────┐  outputs + conversation
-                                       NetworkXBackend   RustworkxBackend  per-layer checkpoints
-                                       (nx.DiGraph)      (PyDiGraph)       callbacks, streaming
-```
+1. **Construction:** nodes, edges, runtime options, and backend graph state are mutable.
+2. **Compilation:** graph structure is converted into cached layers, adjacency maps, and resolved execution tuples.
+3. **Execution:** the runtime sweeps the frozen plan and reads predecessor outputs without calling the graph backend.
 
-### Design Requirements
+Any structural mutation invalidates compiled artifacts. The next `compile()` or `run()` safely regenerates them.
 
-- **(R1)** Per-run overhead must not scale with anything but the work actually dispatched — no per-run graph traversal or state machinery.
-- **(R2)** All analysis that can be hoisted out of the run loop must be, behind an explicit, cached, invalidation-safe compile step.
-- **(R3)** Concurrency must exploit I/O-bound parallelism without paying thread-pool construction per layer.
-- **(R4)** The engine must not be married to one graph library; algorithmic backends improve independently of orchestration.
-- **(R5)** Reliability features (validation, checkpointing, callbacks) must be pay-for-use, costing nothing when disabled.
+The scheduler follows a layered wavefront model. All nodes in one topological generation may execute concurrently, and the next generation starts after the current layer completes. This preserves dependency order while exposing the parallelism of each layer.
 
-### Compilation Pipeline
+## Evaluation
 
-1. **Entry/exit inference** from node degrees.
-2. **Topological generations** via Kahn's algorithm (native in `rustworkx`).
-3. **Single-pass adjacency materialization** — successor and predecessor maps in one iteration over the edge list.
-4. **Structural validation** — degree checks, `O(N+M)` acyclicity test, multi-source BFS reachability from entries and exits.
-5. **Frozen execution plan** — each node resolved to `(id, agent, type, display_name)` per layer; no dictionary lookups on the hot path.
-6. **Caching with explicit invalidation** — every mutator clears the compiled flag; `compile()` is a no-op when nothing changed.
+The benchmark suite measures four lifecycle phases:
 
-### Scheduler
+- **Build:** construct nodes and edges.
+- **Compile:** validate and prepare the execution plan.
+- **First run:** build, compile, and execute once.
+- **Steady run:** execute an already compiled workflow.
 
-- **No per-run graph work** — the run loop never touches the backend.
-- **One pool per run, created lazily, sized to the widest layer** — `min(p, max_i |L_i|)`, default `p = ⌊0.95 · cores⌋`.
-- **Inline execution of singleton layers** — eliminates pool handoff on chains and other single-node layers.
-- **As-completed collection with error containment** — a slow node does not delay siblings; a failing node is recorded as a tagged error string and the run continues.
-- **Pay-for-use hooks** — per-node and per-token callbacks are bound only when registered.
+Five topology families isolate different sources of overhead:
 
----
+- **Chain:** maximum depth and one node per layer
+- **Wide:** one root with many leaves
+- **Diamond:** fan-out followed by fan-in
+- **Layered:** densely connected stages of four nodes
+- **Tree:** binary-tree depth with increasing width
 
-## Theoretical Foundations
+Each topology is measured at 10, 50, and 200 nodes. The reported values are medians of 9 timed samples after 2 warmups. The paper also reports means, standard deviations, 95% confidence intervals, raw samples, and environment provenance.
 
-- **Workflow graph** `G = (V, E)` with agent assignment `a: V → A`. Entry points have `pred(v) = ∅`; exit points have `succ(v) = ∅`.
-- **Topological generations** partition `V` into layers `L_0, …, L_{d-1}` with `d(u) < d(v)` for every edge `(u, v)`.
-- **Layered wavefront schedule** executes layers in index order with a per-layer barrier; node `v` receives `{y_u : u ∈ pred(v)}` and produces `y_v = a(v)(π(τ, {y_u}))`.
-- **Proposition 1 (Dependency Safety)** — every node begins only after all predecessors complete; reads cannot observe partial or stale values.
-- **Theorem 1 (Compilation Complexity)** — compilation runs in `O(N + M)` time and space.
-- **Work-span cost model** — `T_p^barrier = Σ_i (max_{v ∈ L_i} t_v + β_i)` when `p ≥ max_i |L_i|`; for unit-time nodes the barrier schedule is span-optimal whenever layers are internally balanced.
-- **Steady-run overhead model** — `Ω(N, d) ≈ α_node · N + α_layer · d + α_0`.
+Headline results against LangGraph 1.0.4:
 
----
+- GraphWorkflow compilation is 21.6x faster with NetworkX and 31.3x faster with rustworkx by geometric mean.
+- The complete cold path is 7.9x faster with NetworkX and 8.7x faster with rustworkx.
+- Compiled steady-state execution is 7.0x faster with NetworkX and 7.2x faster with rustworkx.
+- A 200-node chain runs in 0.29 ms on GraphWorkflow with NetworkX and 18.15 ms on LangGraph, a 62.5x difference.
+- At 200 nodes, GraphWorkflow overhead ranges from roughly 0.3 to 3 ms per run, while LangGraph ranges from roughly 17 to 25 ms.
 
-## Programming Model Comparison
+The paper attributes these differences to frozen-plan execution, the singleton-layer inline path, one shared pool, and the absence of channel and superstep machinery on the static-DAG hot path.
 
-The same diamond workflow (analyst → {writer, researcher} → editor) expressed in both frameworks highlights the API obligations each imposes on the static-DAG common case:
+## Code Examples
 
-| Obligation | GraphWorkflow | LangGraph |
-| :--- | :--- | :--- |
-| Node definition | agent object itself | function over typed state |
-| Shared-state schema | none | `TypedDict` required |
-| Fan-in merge policy | automatic (predecessor map) | reducer annotation required |
-| Predecessor context | assembled by the engine | read from state by user code |
-| Entry / exit points | inferred from degrees | explicit `START`/`END` edges |
-| Compilation | implicit on first run | explicit `compile()` |
-| Deep graphs (`d > 25`) | no configuration | raise `recursion_limit` |
-| Result form | dict keyed by node | shared channels, merged by reducer |
+The [`examples`](./examples/) directory contains companion artifacts from the paper:
 
-```python
-from swarms import Agent, GraphWorkflow
+- [`diamond_graphworkflow.py`](./examples/diamond_graphworkflow.py) contains Figure 2(a), the diamond workflow implemented with GraphWorkflow.
+- [`diamond_langgraph.py`](./examples/diamond_langgraph.py) contains Figure 2(b), the same workflow implemented with LangGraph 1.0.4.
+- [`reproduce_benchmarks.sh`](./examples/reproduce_benchmarks.sh) contains the Appendix C command sequence for running the benchmark suite, reducer ablation, analysis, and paper build.
+- [`examples/README.md`](./examples/README.md) provides additional notes about the listings.
 
-analyst    = Agent(agent_name="Analyst",    model_name="gpt-5.4")
-writer     = Agent(agent_name="Writer",     model_name="gpt-5.4")
-researcher = Agent(agent_name="Researcher", model_name="gpt-5.4")
-editor     = Agent(agent_name="Editor",     model_name="gpt-5.4")
+The diamond topology is:
 
-wf = GraphWorkflow()
-for a in (analyst, writer, researcher, editor):
-    wf.add_node(a)
-wf.add_edge(analyst, writer)
-wf.add_edge(analyst, researcher)
-wf.add_edge(writer, editor)
-wf.add_edge(researcher, editor)
-
-results = wf.run("Produce a market report.")
-# {"Analyst": ..., "Writer": ..., "Researcher": ..., "Editor": ...}
+```text
+              writer
+             /      \
+analyst ----          ---- editor
+             \      /
+            researcher
 ```
 
----
+The listings are intended as a direct programming-model comparison. They use real agent calls and therefore require appropriate model-provider credentials.
 
-## Experimental Methodology
+## Running the GraphWorkflow Example
 
-### Harness
-
-All measurements come from an open harness under `tests/benchmarks/graph_workflow_benchmarks/` that measures the four lifecycle phases for three implementations: GraphWorkflow over NetworkX, GraphWorkflow over `rustworkx`, and LangGraph's `StateGraph`. Every node is a no-op function, so measured time is orchestration overhead by construction.
-
-- **Sampling:** 2 discarded warmups, then 9 timed samples per cell; medians reported with 95% confidence intervals (Student's *t*, 8 d.f.); means, std devs, and all raw samples in the released JSON.
-- **GC control:** collector forced between samples and disabled inside each timed region.
-- **Logging silenced:** Swarms' enqueueing loguru sink is disabled to keep pickle-and-queue cost out of timed regions.
-- **Working-tree pinning:** the repository root is pinned on `sys.path` so numbers describe the checked-out code.
-- **Provenance:** platform, core count, Python/library versions, git revision, and dirty-tree status are recorded.
-
-### Environment
-
-- macOS 15.7.7 arm64 (12 cores), Python 3.12.3
-- swarms 14.0.0 (revision `daa3368f`, clean tree)
-- langgraph 1.0.4 · networkx 3.5 · rustworkx 0.17.1
-
-### Topology Suite
-
-Five topologies at `N ∈ {10, 50, 200}` nodes are chosen to separate the coefficients of the overhead model:
-
-| Topology | Depth `d` | Probes |
-| :--- | :--- | :--- |
-| **Chain** | `N` | per-layer cost; discriminating case for superstep runtimes |
-| **Wide** | 2 | per-node dispatch cost; concurrency path |
-| **Diamond** | 3 | common map-reduce fan-out/fan-in shape |
-| **Layered** | `⌈N/4⌉` | depth and width together (densest edge count) |
-| **Tree** | `⌊log₂ N⌋ + 1` | logarithmic depth, geometric width growth |
-
-### Fairness Controls
-
-- Both frameworks execute identical topologies, node-for-node and edge-for-edge, through their native construction APIs.
-- LangGraph's default 25-superstep recursion cap is raised so deep graphs complete.
-- Fan-in nodes use an appending list reducer (matching GraphWorkflow's inherent retention); an `O(1)` counter-reducer ablation is also reported.
-- No checkpointer is configured for LangGraph (its default); GraphWorkflow runs single-loop with checkpointing disabled.
-
----
-
-## Reproduction
-
-All artifacts live in the Swarms repository under `tests/benchmarks/graph_workflow_benchmarks/`.
+Install Swarms:
 
 ```bash
-# 1. Run the full benchmark suite (writes results/latest.json + latest.md)
-python3 tests/benchmarks/graph_workflow_benchmarks/graph_workflow_bench.py
-
-# 2. Reducer ablation (O(1) counter reducer for LangGraph fan-in state)
-python3 tests/benchmarks/graph_workflow_benchmarks/graph_workflow_bench.py \
-  --lg-reducer counter \
-  --out .../results/langgraph_counter_reducer.json
-
-# 3. Regenerate every figure, table, and statistic in the paper
-python3 tests/benchmarks/graph_workflow_benchmarks/graphworkflow_paper/analysis/analyze.py
-
-# 4. Build the paper
-cd tests/benchmarks/graph_workflow_benchmarks/graphworkflow_paper
-tectonic main.tex        # or: latexmk -pdf main.tex
+pip install swarms
 ```
 
-The analysis script consumes only the two result JSON files; every number in the text is emitted as a LaTeX macro by the same script (`tables/stats.tex`), so the paper cannot silently drift from the data.
+Set the credentials required by the model configured in the example, then run:
 
-### Statistical Conventions
+```bash
+python examples/diamond_graphworkflow.py
+```
 
-- Reported values are **medians of `n = 9` samples** after 2 warmups.
-- Intervals are **95% confidence intervals** on the mean using Student's *t* with 8 degrees of freedom.
-- Aggregate speedups are **geometric means** of per-cell median ratios.
-- Raw samples for every cell and full environment provenance are preserved in the JSON files.
+The workflow returns a dictionary keyed by node name:
 
----
-
-## Discussion & Limitations
-
-### What the numbers do and do not claim
-
-The evaluation measures **orchestration overhead on static DAGs of no-op nodes**. It does not measure end-to-end agent quality, token throughput, or behavior under real LLM latency, where a 500 ms node renders both frameworks' per-node overhead invisible in any single execution. GraphWorkflow is one to two orders of magnitude cheaper at every measured phase of the graph lifecycle, with the gap widest exactly where overhead compounds: deep graphs, high execution rates, and repeated construction.
-
-### Concurrency ceiling
-
-The scheduler is thread-based and in-process — appropriate for I/O-bound agent calls on current CPython (the GIL is released during network waits), but it caps CPU-bound node work and offers no horizontal scale-out. The layer barrier also forfeits parallelism when node durations within a layer are skewed.
-
-### Benchmark scope
-
-- Suite tops out at 200 nodes; neither memory behavior nor scheduler behavior at `10³–10⁴`-node scale is characterized.
-- Only synchronous entry points are measured (`arun` currently delegates to a thread).
-- All numbers come from one machine, one Python version, and one OS; cross-platform replication, peak-RSS, allocation counts, and CPU-utilization traces are flagged as the most valuable missing measurements.
-
----
-
-## Future Directions
-
-Five directions follow naturally from the compile-once design:
-
-1. **Distributed execution** — the compiled plan is a plain layered list of picklable specifications; partitioning layers across processes or machines, with the output map as the only shared state, is a natural extension.
-2. **Heterogeneous and GPU-aware scheduling** — compile-time resource-class annotations plus per-class pools would extend the single-pool model without touching the sweep.
-3. **Compiler-assisted optimization** — the compile phase is the hook for fusing linear chains, batching sibling calls to one model endpoint, and precomputing prompt skeletons.
-4. **Dynamic rewriting** — compiling guard nodes into alternative sub-plans would close part of the expressiveness gap with LangGraph while preserving the static hot path.
-5. **Scale** — pushing the suite to `10³–10⁴` nodes, where the `O(N + M)` compile bound predicts, but does not yet demonstrate, continued linearity.
-
----
-
-## Related Work
-
-- **Workflow managers:** Airflow, Prefect — durable cross-machine state at per-task latencies of `10²–10³` ms.
-- **Dataflow / task-parallel systems:** Dask (~100–200 μs per task), Ray (compiled task graphs over a distributed object store), Pregel and the BSP model that inspired LangGraph.
-- **Graph libraries:** NetworkX and `rustworkx` supply the algorithmic substrate; GraphWorkflow's contribution is the backend abstraction that makes them interchangeable beneath an execution engine, plus the compile-once discipline that keeps them off the hot path.
-- **Classical algorithms:** Kahn's topological sort, Johnson's cycle enumeration (deliberately avoided on the common path), and the work-span scheduling theory of Graham, Brent, and Blumofe & Leiserson.
-
----
-
-## Citation
-
-```bibtex
-@misc{gomez2026graphworkflow,
-  title        = {GraphWorkflow: A Low-Overhead Compile-Once Graph Execution
-                  Engine for Multi-Agent Systems},
-  author       = {Kye Gomez},
-  year         = {2026},
-  month        = aug,
-  howpublished = {Swarms framework technical report},
-  url          = {https://github.com/kyegomez/swarms}
+```python
+{
+    "Analyst": "...",
+    "Writer": "...",
+    "Researcher": "...",
+    "Editor": "...",
 }
 ```
 
----
+To study the corresponding LangGraph construction, see [`diamond_langgraph.py`](./examples/diamond_langgraph.py). That listing focuses on the framework-specific graph and state setup shown in the paper and assumes the four agent objects have already been created.
+
+## Reproducing the Benchmarks
+
+The benchmark implementation lives in the main [Swarms repository](https://github.com/kyegomez/swarms) under:
+
+```text
+tests/benchmarks/graph_workflow_benchmarks/
+```
+
+From a Swarms checkout, the paper's reproduction workflow is:
+
+```bash
+# Run the complete benchmark suite
+python3 tests/benchmarks/graph_workflow_benchmarks/graph_workflow_bench.py
+
+# Run the LangGraph O(1) counter-reducer ablation
+python3 tests/benchmarks/graph_workflow_benchmarks/graph_workflow_bench.py \
+  --lg-reducer counter \
+  --out tests/benchmarks/graph_workflow_benchmarks/results/langgraph_counter_reducer.json
+
+# Regenerate figures, tables, and statistics
+python3 tests/benchmarks/graph_workflow_benchmarks/graphworkflow_paper/analysis/analyze.py
+
+# Build the paper
+cd tests/benchmarks/graph_workflow_benchmarks/graphworkflow_paper
+tectonic main.tex
+```
+
+You can also consult the exact Appendix C recipe in [`examples/reproduce_benchmarks.sh`](./examples/reproduce_benchmarks.sh).
+
+The published evaluation environment was:
+
+- macOS 15.7.7 on ARM64
+- 12 CPU cores
+- Python 3.12.3
+- Swarms 14.0.0 at revision `daa3368f`
+- LangGraph 1.0.4
+- NetworkX 3.5
+- rustworkx 0.17.1
+
+## Scope and Limitations
+
+The evaluation measures synchronous, in-process orchestration overhead on one machine using static DAGs of up to 200 no-op nodes. It does not measure model quality, token throughput, memory usage, CPU utilization, distributed execution, or asynchronous entry points.
+
+GraphWorkflow currently favors predictable static plans over dynamic control flow. Its layer barriers can also leave concurrency unused when node runtimes within one layer are highly skewed. The paper identifies edge-triggered scheduling, distributed execution, resource-aware scheduling, compiler-assisted optimization, dynamic sub-plans, and larger-scale benchmarks as future work.
+
+## Paper
+
+The complete 21-page manuscript includes the formal execution model, correctness argument, compilation complexity proof, scheduler design, backend implementation, complete benchmark methodology, distributional statistics, reducer ablation, limitations, and reproduction guide.
+
+**[Download or view `main.pdf`](./main.pdf)**
+
+## Citation
+
+If this work is useful in your research, please cite:
+
+```bibtex
+@article{gomez2026graphworkflow,
+  title   = {GraphWorkflow: A Low-Overhead Compile-Once Graph Execution Engine for Multi-Agent Systems},
+  author  = {Gomez, Kye},
+  year    = {2026},
+  month   = {August},
+  note    = {Swarms}
+}
+```
 
 ## License
 
-This artifact is released as part of the [Swarms](https://github.com/kyegomez/swarms) framework. See the upstream repository for license details.
-
+See [`LICENSE`](./LICENSE) for the repository's license terms.
