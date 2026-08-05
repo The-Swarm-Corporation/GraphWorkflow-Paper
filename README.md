@@ -6,6 +6,13 @@ Correspondence: [kye@swarms.world](mailto:kye@swarms.world)
 
 [Read the full paper (PDF)](./main.pdf) | [Explore the examples](./examples/) | [Inspect the benchmarks](./benchmarks/)
 
+[GraphWorkflow source](https://github.com/kyegomez/swarms/blob/master/swarms/structs/graph_workflow.py) | [Swarms GitHub](https://github.com/kyegomez/swarms) | [Website](https://swarms.ai) | [Discord](https://discord.gg/SSj7FyRSwy)
+
+[![GraphWorkflow source](https://img.shields.io/badge/GraphWorkflow-Source-0969DA?logo=github&logoColor=white)](https://github.com/kyegomez/swarms/blob/master/swarms/structs/graph_workflow.py)
+[![Swarms GitHub](https://img.shields.io/github/stars/kyegomez/swarms?style=flat&logo=github&label=Swarms)](https://github.com/kyegomez/swarms)
+[![Swarms website](https://img.shields.io/badge/Website-swarms.ai-111111?logo=safari&logoColor=white)](https://swarms.ai)
+[![Discord](https://img.shields.io/badge/Discord-Join%20Community-5865F2?logo=discord&logoColor=white)](https://discord.gg/SSj7FyRSwy)
+
 GraphWorkflow is the graph orchestration engine in the open-source [Swarms](https://github.com/kyegomez/swarms) framework. It is designed for static directed acyclic graphs of agents that are compiled once and executed many times. Compilation performs structural analysis, validation, adjacency materialization, and execution-plan generation. Runtime execution then sweeps the frozen plan with minimal orchestration work.
 
 This repository contains the paper, companion code examples, benchmark harness, raw benchmark samples, and generated result summaries.
