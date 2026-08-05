@@ -194,9 +194,7 @@ def fig_scaling(
                 markeredgewidth=1.2,
                 zorder=3,
             )
-            label_entries.append(
-                (xs[-1], ys[-1], LABELS[impl], color)
-            )
+            label_entries.append((xs[-1], ys[-1], LABELS[impl], color))
 
         ax.set_xscale("log")
         ax.set_yscale("log")
@@ -205,9 +203,7 @@ def fig_scaling(
         ax.set_ylabel("median ms")
         ax.set_xticks([int(s) for s in sizes])
         ax.set_xticks([], minor=True)
-        ax.get_xaxis().set_major_formatter(
-            FuncFormatter(lambda v, p: f"{v:.0f}")
-        )
+        ax.get_xaxis().set_major_formatter(FuncFormatter(lambda v, p: f"{v:.0f}"))
         ax.get_yaxis().set_major_formatter(FuncFormatter(ms_fmt))
         ax.margins(x=0.30)
         _finish_axis(ax, theme)
@@ -290,9 +286,7 @@ def fig_phases(
     ax.set_axisbelow(True)
     ax.margins(x=0.30)
 
-    legend = ax.legend(
-        frameon=False, loc="lower right", fontsize=8, ncol=1
-    )
+    legend = ax.legend(frameon=False, loc="lower right", fontsize=8, ncol=1)
     for text in legend.get_texts():
         text.set_color(theme["text_secondary"])
 
@@ -330,15 +324,13 @@ def fig_total(
     impls = [i for i in results["impls"] if i in per_impl]
     imports = results.get("imports", {})
     import_ms = {
-        "swarms-networkx": imports.get(
-            "swarms.GraphWorkflow", {}
-        ).get("median_ms", 0.0),
-        "swarms-rustworkx": imports.get(
-            "swarms.GraphWorkflow", {}
-        ).get("median_ms", 0.0),
-        "langgraph": imports.get("langgraph.StateGraph", {}).get(
+        "swarms-networkx": imports.get("swarms.GraphWorkflow", {}).get(
             "median_ms", 0.0
         ),
+        "swarms-rustworkx": imports.get("swarms.GraphWorkflow", {}).get(
+            "median_ms", 0.0
+        ),
+        "langgraph": imports.get("langgraph.StateGraph", {}).get("median_ms", 0.0),
     }
 
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(11.0, 4.4))
@@ -492,16 +484,8 @@ def fig_gains(
                 continue
             for phase in PHASES:
                 for impl in impls:
-                    a = (
-                        after["topologies"][topo][size]
-                        .get(impl, {})
-                        .get(phase)
-                    )
-                    b = (
-                        before["topologies"][topo][size]
-                        .get(impl, {})
-                        .get(phase)
-                    )
+                    a = after["topologies"][topo][size].get(impl, {}).get(phase)
+                    b = before["topologies"][topo][size].get(impl, {}).get(phase)
                     if not a or not b or a["median_ms"] <= 0:
                         continue
                     # Backend goes in the row label too: two impls can produce
@@ -539,22 +523,15 @@ def fig_gains(
 
     ax.axvline(1.0, color=theme["axis"], linewidth=1.0, zorder=2)
     ax.set_yticks(range(len(rows)))
-    ax.set_yticklabels(
-        [r[0] for r in rows], fontsize=7.5, color=theme["text"]
-    )
+    ax.set_yticklabels([r[0] for r in rows], fontsize=7.5, color=theme["text"])
     ax.set_xscale("log")
     ax.set_xlabel("speedup factor (before ÷ after, log scale)")
-    ax.get_xaxis().set_major_formatter(
-        FuncFormatter(lambda v, p: f"{v:g}x")
-    )
+    ax.get_xaxis().set_major_formatter(FuncFormatter(lambda v, p: f"{v:g}x"))
     ax.grid(True, axis="x", linewidth=0.6, alpha=0.9, zorder=0)
     ax.set_axisbelow(True)
     ax.margins(x=0.18)
 
-    handles = [
-        plt.Rectangle((0, 0), 1, 1, color=theme["series"][i])
-        for i in impls
-    ]
+    handles = [plt.Rectangle((0, 0), 1, 1, color=theme["series"][i]) for i in impls]
     legend = ax.legend(
         handles,
         [LABELS[i] for i in impls],
@@ -585,18 +562,14 @@ def _save(fig, out_dir: str, name: str, theme_name: str) -> str:
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument(
-        "results", help="results JSON from graph_workflow_bench.py"
-    )
+    ap.add_argument("results", help="results JSON from graph_workflow_bench.py")
     ap.add_argument(
         "--baseline",
         default=None,
         help="optional earlier results JSON to compute before/after gains",
     )
     ap.add_argument("--out-dir", default=None)
-    ap.add_argument(
-        "--themes", default="light,dark", help="comma separated"
-    )
+    ap.add_argument("--themes", default="light,dark", help="comma separated")
     args = ap.parse_args()
 
     with open(args.results) as fh:
@@ -614,19 +587,11 @@ def main() -> None:
     for theme_name in args.themes.split(","):
         theme_name = theme_name.strip()
         for topo in after["topologies"]:
-            written.append(
-                fig_scaling(after, topo, theme_name, out_dir)
-            )
+            written.append(fig_scaling(after, topo, theme_name, out_dir))
             largest = max(after["topologies"][topo], key=int)
-            written.append(
-                fig_phases(after, topo, largest, theme_name, out_dir)
-            )
+            written.append(fig_phases(after, topo, largest, theme_name, out_dir))
             if after.get("imports"):
-                written.append(
-                    fig_total(
-                        after, topo, largest, theme_name, out_dir
-                    )
-                )
+                written.append(fig_total(after, topo, largest, theme_name, out_dir))
         if before:
             path = fig_gains(after, before, theme_name, out_dir)
             if path:

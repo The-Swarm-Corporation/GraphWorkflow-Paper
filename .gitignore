@@ -7,7 +7,8 @@ __pycache__/
 *.so
 old
 
-
+agent_workspace/
+paper/
 # Distribution / packaging
 .Python
 build/

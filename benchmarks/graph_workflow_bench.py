@@ -65,9 +65,7 @@ def _find_repo_root() -> str:
     here = os.path.dirname(os.path.abspath(__file__))
     current = here
     while True:
-        if os.path.isfile(
-            os.path.join(current, "swarms", "__init__.py")
-        ):
+        if os.path.isfile(os.path.join(current, "swarms", "__init__.py")):
             return current
         parent = os.path.dirname(current)
         if parent == current:
@@ -83,9 +81,7 @@ os.environ["PYTHONPATH"] = os.pathsep.join(
 )
 
 # Results live beside this script, not at the repo root.
-_RESULTS_DIR = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)), "results"
-)
+_RESULTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "results")
 
 PHASES = ["build", "compile", "first_run", "steady_run"]
 
@@ -192,17 +188,13 @@ def bench(
                 gc.enable()
 
     ordered = sorted(samples)
-    p95_idx = min(
-        len(ordered) - 1, int(round(0.95 * (len(ordered) - 1)))
-    )
+    p95_idx = min(len(ordered) - 1, int(round(0.95 * (len(ordered) - 1))))
     return {
         "min_ms": ordered[0],
         "median_ms": statistics.median(samples),
         "mean_ms": statistics.fmean(samples),
         "p95_ms": ordered[p95_idx],
-        "stdev_ms": (
-            statistics.stdev(samples) if len(samples) > 1 else 0.0
-        ),
+        "stdev_ms": (statistics.stdev(samples) if len(samples) > 1 else 0.0),
         "n": len(samples),
         "samples_ms": samples,
     }
@@ -223,9 +215,7 @@ def cold_import_ms(statement: str, repeats: int) -> Dict[str, Any]:
     loaded = _subprocess_samples(statement, repeats)
     base_median = statistics.median(baseline)
     return {
-        "median_ms": max(
-            0.0, statistics.median(loaded) - base_median
-        ),
+        "median_ms": max(0.0, statistics.median(loaded) - base_median),
         "raw_median_ms": statistics.median(loaded),
         "interpreter_baseline_ms": base_median,
         "samples_ms": loaded,
@@ -249,9 +239,7 @@ def _subprocess_samples(statement: str, repeats: int) -> List[float]:
             env=env,
         )
         if out.returncode != 0:
-            raise RuntimeError(
-                f"import probe failed for {statement!r}:\n{out.stderr}"
-            )
+            raise RuntimeError(f"import probe failed for {statement!r}:\n{out.stderr}")
         samples.append(float(out.stdout.strip().splitlines()[-1]))
     return samples
 
@@ -282,8 +270,7 @@ def layered_edges(n: int, width: int = 4) -> List[Tuple[str, str]]:
     """Stacked layers of ``width`` nodes, fully connected between layers."""
     edges = []
     layers = [
-        [f"n{i}" for i in range(s, min(s + width, n))]
-        for s in range(0, n, width)
+        [f"n{i}" for i in range(s, min(s + width, n))] for s in range(0, n, width)
     ]
     for a, b in zip(layers, layers[1:]):
         for src in a:
@@ -371,9 +358,7 @@ def swarms_suite(
 
     warm = swarms_build(n, edges, backend, auto_compile=True)
     warm.run("warmup")
-    res["steady_run"] = bench(
-        lambda: warm.run("benchmark task"), repeats, warmup
-    )
+    res["steady_run"] = bench(lambda: warm.run("benchmark task"), repeats, warmup)
     return res
 
 
@@ -511,15 +496,9 @@ def derive(results: Dict[str, Any]) -> None:
         return
 
     import_for = {
-        "swarms-networkx": imports.get(
-            "swarms.GraphWorkflow", {}
-        ).get("median_ms"),
-        "swarms-rustworkx": imports.get(
-            "swarms.GraphWorkflow", {}
-        ).get("median_ms"),
-        "langgraph": imports.get("langgraph.StateGraph", {}).get(
-            "median_ms"
-        ),
+        "swarms-networkx": imports.get("swarms.GraphWorkflow", {}).get("median_ms"),
+        "swarms-rustworkx": imports.get("swarms.GraphWorkflow", {}).get("median_ms"),
+        "langgraph": imports.get("langgraph.StateGraph", {}).get("median_ms"),
     }
 
     for topo, sizes in results["topologies"].items():
@@ -545,9 +524,7 @@ def derive(results: Dict[str, Any]) -> None:
                     - phases["steady_run"]["median_ms"]
                 )
                 phases["breakeven_runs"] = (
-                    None
-                    if gain <= 0
-                    else (0 if deficit <= 0 else deficit / gain)
+                    None if gain <= 0 else (0 if deficit <= 0 else deficit / gain)
                 )
                 phases["breakeven_vs"] = fastest_cold
 
@@ -566,8 +543,7 @@ def report(results: Dict[str, Any]) -> str:
         f"swarms @ {env['git_rev']}"
         f"{' (dirty)' if env['git_dirty_swarms'] else ''}*",
         "",
-        "Versions: "
-        + ", ".join(f"{k} {v}" for k, v in env["versions"].items()),
+        "Versions: " + ", ".join(f"{k} {v}" for k, v in env["versions"].items()),
         "",
         f"Timing: median of {results['config']['repeats']} samples after "
         f"{results['config']['warmup']} warmup iterations, GC disabled inside "
@@ -595,25 +571,15 @@ def report(results: Dict[str, Any]) -> str:
         lines += [f"## Topology: {topo}", ""]
         header = "| nodes | phase | " + " | ".join(impls) + " |"
         lines.append(header)
-        lines.append(
-            "| ---: | --- | "
-            + " | ".join("---:" for _ in impls)
-            + " |"
-        )
+        lines.append("| ---: | --- | " + " | ".join("---:" for _ in impls) + " |")
         for size in sorted(sizes, key=int):
             per_impl = sizes[size]
             for phase in PHASES:
                 cells = []
                 for impl in impls:
                     stats = per_impl.get(impl, {}).get(phase)
-                    cells.append(
-                        f"{stats['median_ms']:.3f}" if stats else "—"
-                    )
-                lines.append(
-                    f"| {size} | {phase} | "
-                    + " | ".join(cells)
-                    + " |"
-                )
+                    cells.append(f"{stats['median_ms']:.3f}" if stats else "—")
+                lines.append(f"| {size} | {phase} | " + " | ".join(cells) + " |")
         lines.append("")
 
     md = "\n".join(lines)
@@ -630,9 +596,7 @@ def main() -> None:
     ap.add_argument("--repeats", type=int, default=9)
     ap.add_argument("--warmup", type=int, default=2)
     ap.add_argument("--import-repeats", type=int, default=5)
-    ap.add_argument(
-        "--topologies", default="chain,wide,diamond,layered,tree"
-    )
+    ap.add_argument("--topologies", default="chain,wide,diamond,layered,tree")
     ap.add_argument(
         "--impls",
         default="swarms-networkx,swarms-rustworkx,langgraph",
@@ -701,13 +665,9 @@ def main() -> None:
                 "from swarms.structs.graph_workflow import GraphWorkflow"
             )
         if "langgraph" in impls:
-            probes["langgraph.StateGraph"] = (
-                "from langgraph.graph import StateGraph"
-            )
+            probes["langgraph.StateGraph"] = "from langgraph.graph import StateGraph"
         for name, stmt in probes.items():
-            results["imports"][name] = cold_import_ms(
-                stmt, args.import_repeats
-            )
+            results["imports"][name] = cold_import_ms(stmt, args.import_repeats)
 
     for topo in topologies:
         edge_fn = TOPOLOGIES[topo]
@@ -740,9 +700,7 @@ def main() -> None:
     derive(results)
     md = report(results)
 
-    os.makedirs(
-        os.path.dirname(os.path.abspath(args.out)), exist_ok=True
-    )
+    os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
     with open(args.out, "w") as fh:
         json.dump(results, fh, indent=2)
     md_path = os.path.splitext(args.out)[0] + ".md"
