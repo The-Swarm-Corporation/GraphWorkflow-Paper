@@ -2,16 +2,18 @@
 
 ![Graphworkflow Image](img.jpeg)
 
-Kye Gomez, Adi Chaudhary, Ayaan Gazali, and Steve-Dusty Wyatt Stanke  
-Swarms, August 2026  
-Correspondence: [kye@swarms.world](mailto:kye@swarms.world)
-
-[Read the full paper (PDF)](./main.pdf) | [Explore the examples](./examples/) | [Inspect the benchmarks](./benchmarks/)
-
 [![GraphWorkflow source](https://img.shields.io/badge/GraphWorkflow-Source-181717?style=for-the-badge&logo=github&logoColor=white)](https://github.com/kyegomez/swarms/blob/master/swarms/structs/graph_workflow.py)
 [![Swarms GitHub](https://img.shields.io/badge/Swarms-GitHub-181717?style=for-the-badge&logo=github&logoColor=white)](https://github.com/kyegomez/swarms)
 [![Swarms website](https://img.shields.io/badge/Website-swarms.ai-0A84FF?style=for-the-badge&logo=safari&logoColor=white)](https://swarms.ai)
 [![Discord](https://img.shields.io/badge/Discord-Join%20Community-5865F2?style=for-the-badge&logo=discord&logoColor=white)](https://discord.gg/SSj7FyRSwy)
+
+[Read the full paper (PDF)](./main.pdf) | [Explore the examples](./examples/) | [Inspect the benchmarks](./benchmarks/)
+
+
+
+Kye Gomez, Adi Chaudhary, Ayaan Gazali, and Steve-Dusty Wyatt Stanke  
+Swarms, August 2026  
+Correspondence: [kye@swarms.world](mailto:kye@swarms.world)
 
 GraphWorkflow is the graph orchestration engine in the open-source [Swarms](https://github.com/kyegomez/swarms) framework. It is designed for static directed acyclic graphs of agents that are compiled once and executed many times. Compilation performs structural analysis, validation, adjacency materialization, and execution-plan generation. Runtime execution then sweeps the frozen plan with minimal orchestration work.
 
