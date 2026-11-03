@@ -24,8 +24,17 @@ python3 tests/benchmarks/graph_workflow_benchmarks/graph_workflow_bench.py
 
 # 2. Reducer ablation (O(1) counter reducer for LangGraph fan-in state)
 python3 tests/benchmarks/graph_workflow_benchmarks/graph_workflow_bench.py \
-    --lg-reducer counter \
+    --lg-reducer counter --impls langgraph --skip-imports \
     --out .../results/langgraph_counter_reducer.json
+
+# 2b. Worker-cap ablation (swarms 14.0.0 default bound: 95% of 12 cores = 11)
+python3 tests/benchmarks/graph_workflow_benchmarks/graph_workflow_bench.py \
+    --impls swarms-networkx,swarms-rustworkx --skip-imports \
+    --max-parallel-nodes 11 \
+    --out .../results/swarms_capped_workers.json
+
+# 2c. End-to-end run with real LLM agents (paid API calls; needs OPENAI_API_KEY)
+python3 benchmarks/agent_execution_bench.py
 
 # 3. Regenerate every figure, table, and statistic in the paper
 python3 tests/benchmarks/graph_workflow_benchmarks/graphworkflow_paper/analysis/analyze.py

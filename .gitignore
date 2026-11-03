@@ -10,6 +10,7 @@ old
 agent_workspace/
 paper/
 # Distribution / packaging
+docs/
 .Python
 build/
 develop-eggs/
@@ -222,3 +223,18 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# --- GraphWorkflow paper: generated, not source ---
+# Ad-hoc benchmark runs (README "before/after" recipe) and plot_results.py output
+benchmarks/results/before.*
+benchmarks/results/after.*
+benchmarks/results/figures/
+# LaTeX build intermediates (tectonic / latexmk)
+*.aux
+*.bbl
+*.blg
+*.out
+*.toc
+*.fls
+*.fdb_latexmk
+*.synctex.gz

@@ -34,6 +34,13 @@ python3 benchmarks/agent_execution_bench.py --topologies diamond --sizes 4 --rep
 # options: --model gpt-5.4 --backend networkx|rustworkx --sizes --repeats --warmup --out
 ```
 
+The JSON records swarms/langgraph versions and a timestamp (runs before
+2026-11-03 did not).
+
+> **Note:** the result table below was measured on swarms 14.0.0 (2026-08-05).
+> The 2026-11-03 re-run on swarms 17.0.0 failed with HTTP 401 (invalid
+> `OPENAI_API_KEY` in `.env`) and has not been repeated yet.
+
 Outputs, written to `results/`:
 
 - `agent_execution.json` — config plus raw samples, medians, and means per cell
@@ -82,6 +89,30 @@ python3 tests/benchmarks/graph_workflow_benchmarks/plot_results.py tests/benchma
 ```
 
 Figures land in `tests/benchmarks/graph_workflow_benchmarks/results/figures/`, in light and dark variants.
+
+### Result (2026-11-03, swarms 17.0.0 vs LangGraph 1.0.4, macOS ARM64, 12 cores)
+
+Full grids are in `results/latest.md`. Geometric-mean speedups over LangGraph
+across the 15 topology × size cells:
+
+| phase | networkx | rustworkx |
+|---|---|---|
+| build | 2.4x | 2.7x |
+| compile | 22.9x | 35.0x |
+| first_run | 7.0x | 7.6x |
+| steady_run | 5.9x (7.8x capped) | 6.2x (7.9x capped) |
+
+Cold import is 231 ms for `GraphWorkflow` and 291 ms for `StateGraph`.
+GraphWorkflow's import was 1,584 ms in swarms 14.0.0; networkx, rustworkx, and
+graphviz now load lazily.
+
+"capped" means `--max-parallel-nodes 11` (`results/swarms_capped_workers.json`).
+Starting with swarms 17, GraphWorkflow sizes its thread pool to the widest
+layer; before that it used 95% of cores. No-op nodes only see the extra thread
+creation (wide-200 takes 5.1 ms, against 2.1 ms in 14.0.0 and 1.7 ms capped).
+Real network-bound agents gain from it, because a wide layer is no longer split
+into waves of `cores` calls. The archived 14.0.0 run is in
+`results/swarms-14.0.0_2026-08-05/` for release-over-release comparison.
 
 ## What is measured
 

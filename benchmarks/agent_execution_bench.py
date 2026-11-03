@@ -216,7 +216,25 @@ def main():
     ap.add_argument("--out", default="benchmarks/results/agent_execution.json")
     args = ap.parse_args()
 
-    results = {"config": vars(args), "runs": []}
+    import importlib.metadata as md
+    import platform
+
+    def _ver(name):
+        try:
+            return md.version(name)
+        except Exception:
+            return "not-installed"
+
+    results = {
+        "config": vars(args),
+        "env": {
+            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
+            "platform": platform.platform(),
+            "python": platform.python_version(),
+            "versions": {n: _ver(n) for n in ("swarms", "langgraph", "networkx")},
+        },
+        "runs": [],
+    }
     print(f"model={args.model}  repeats={args.repeats}  warmup={args.warmup}\n")
     print("| topology | n | GraphWorkflow ms | LangGraph ms | speedup |")
     print("|---|---|---|---|---|")

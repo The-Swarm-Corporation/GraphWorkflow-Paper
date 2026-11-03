@@ -12,7 +12,7 @@
 
 
 Kye Gomez, Adi Chaudhary, Ayaan Gazali, and Steve-Dusty Wyatt Stanke  
-Swarms, August 2026  
+Swarms, November 2026  
 Correspondence: [kye@swarms.world](mailto:kye@swarms.world)
 
 GraphWorkflow is the graph orchestration engine in the open-source [Swarms](https://github.com/kyegomez/swarms) framework. It is designed for static directed acyclic graphs of agents that are compiled once and executed many times. Compilation performs structural analysis, validation, adjacency materialization, and execution-plan generation. Runtime execution then sweeps the frozen plan with minimal orchestration work.
@@ -27,13 +27,22 @@ GraphWorkflow uses a compile-once, sweep-many architecture. Its compilation phas
 
 Across 15 benchmark configurations covering five graph topologies and sizes from 10 to 200 nodes, GraphWorkflow achieved:
 
-- **7.0x geometric-mean steady-state speedup** over LangGraph 1.0.4 with the NetworkX backend
-- **7.2x geometric-mean steady-state speedup** with the rustworkx backend
-- **Up to 62.5x faster steady-state execution** on a 200-node chain
-- **21.6x to 31.3x faster compilation**
-- **7.9x to 8.7x faster first-run execution**, including build, compile, and one run
+- **5.9x geometric-mean steady-state speedup** over LangGraph 1.0.4 with the NetworkX backend (6.2x with rustworkx), or **7.8x** with the worker pool capped at the core count
+- **Up to 60.2x faster steady-state execution** on a 200-node chain
+- **22.9x to 35.0x faster compilation**
+- **7.0x to 7.6x faster first-run execution**, including build, compile, and one run
+- **1.26x faster cold import** than LangGraph (231 ms vs 291 ms), down from 1,584 ms in swarms 14.0.0, a 6.9x reduction
 
-All performance measurements use no-op nodes, so the reported times isolate orchestration overhead rather than model latency.
+These figures are for swarms 17.0.0. All no-op measurements isolate orchestration overhead rather than model latency. With real LLM agents (gpt-5.4) both frameworks reach end-to-end parity, because model time dominates.
+
+#### What changed since swarms 14.0.0
+
+The harness, machine, and LangGraph version are unchanged, so the numbers compare directly with the August release:
+
+- **Import:** cold `GraphWorkflow` import fell from 1,584 ms to 231 ms because networkx, rustworkx, and graphviz now load lazily. Total cold start (import plus first run) now favors GraphWorkflow by 1.27x to 1.42x in every cell, where in swarms 14.0.0 LangGraph led by more than a second.
+- **Narrow and deep graphs:** steady runs are 17% faster (geometric mean) on cells whose layers fit within the core count. That is consistent with the cheaper input assembly: predecessor outputs are now passed as chat messages rather than concatenated into one prompt string.
+- **Wide layers:** the default worker pool is now as wide as the widest layer, where it used to be 95% of the cores. With no-op nodes this costs time; for example, wide-200 takes 5.1 ms versus 2.1 ms before. With real network-bound agents, the trade goes the other way: a 50-way fan-out is no longer split into ⌈50/11⌉ = 5 sequential waves of model calls on a 12-core machine. Passing `max_parallel_nodes=11` restores the old bound and brings wide-200 down to 1.7 ms.
+- **Unchanged:** build and compile cost stay the same within noise, because the compile pipeline itself did not change.
 
 ## Core Contributions
 
@@ -56,7 +65,7 @@ The runtime does not traverse the graph or consult the selected graph backend. I
 
 - Singleton layers run inline on the caller thread.
 - Parallel layers share one lazily created thread pool per run.
-- The pool is capped by the widest layer and the configured worker limit.
+- The pool is as wide as the widest layer by default (swarms 17+), so network-bound siblings all run at once; `max_parallel_nodes` sets a cap.
 - Results are collected as tasks complete.
 - Errors are contained as node outputs so sibling work can finish.
 - Checkpoints and callbacks are pay-for-use features.
@@ -116,11 +125,12 @@ Each topology is measured at 10, 50, and 200 nodes. The reported values are medi
 
 Headline results against LangGraph 1.0.4:
 
-- GraphWorkflow compilation is 21.6x faster with NetworkX and 31.3x faster with rustworkx by geometric mean.
-- The complete cold path is 7.9x faster with NetworkX and 8.7x faster with rustworkx.
-- Compiled steady-state execution is 7.0x faster with NetworkX and 7.2x faster with rustworkx.
-- A 200-node chain runs in 0.29 ms on GraphWorkflow with NetworkX and 18.15 ms on LangGraph, a 62.5x difference.
-- At 200 nodes, GraphWorkflow overhead ranges from roughly 0.3 to 3 ms per run, while LangGraph ranges from roughly 17 to 25 ms.
+- GraphWorkflow compilation is 22.9x faster with NetworkX and 35.0x faster with rustworkx by geometric mean.
+- The complete cold path is 7.0x faster with NetworkX and 7.6x faster with rustworkx.
+- Compiled steady-state execution is 5.9x faster with NetworkX and 6.2x faster with rustworkx, or 7.8x and 7.9x with the pool capped at 11 workers.
+- A 200-node chain runs in 0.28 ms on GraphWorkflow with NetworkX and 17.14 ms on LangGraph, a 60.2x difference.
+- At 200 nodes, GraphWorkflow overhead ranges from roughly 0.3 to 5.3 ms per run, while LangGraph ranges from roughly 17 to 24 ms.
+- Cold import of `GraphWorkflow` takes 231 ms, compared with 291 ms for LangGraph's `StateGraph`.
 
 The paper attributes these differences to frozen-plan execution, the singleton-layer inline path, one shared pool, and the absence of channel and superstep machinery on the static-DAG hot path.
 
@@ -185,6 +195,9 @@ The [`benchmarks`](./benchmarks/) directory includes:
 - [`results/latest.md`](./benchmarks/results/latest.md), a readable summary of the complete result grid
 - [`results/langgraph_counter_reducer.json`](./benchmarks/results/langgraph_counter_reducer.json), containing the raw counter-reducer ablation
 - [`results/langgraph_counter_reducer.md`](./benchmarks/results/langgraph_counter_reducer.md), containing the readable ablation summary
+- [`results/swarms_capped_workers.json`](./benchmarks/results/swarms_capped_workers.json), the GraphWorkflow sweep with `max_parallel_nodes=11` (the swarms 14.0.0 default bound on this machine)
+- [`results/swarms-14.0.0_2026-08-05/`](./benchmarks/results/swarms-14.0.0_2026-08-05/), the archived swarms 14.0.0 results used for the release comparison
+- [`agent_execution_bench.py`](./benchmarks/agent_execution_bench.py) and [`results/agent_execution.json`](./benchmarks/results/agent_execution.json), the end-to-end run with real LLM agents
 
 The harness measures import, build, compile, first-run, and steady-run costs. It also derives total cold-start latency and the number of repeated executions required to offset an import-time disadvantage. Import timing uses a fresh subprocess and subtracts bare Python interpreter startup.
 
@@ -204,8 +217,13 @@ python3 tests/benchmarks/graph_workflow_benchmarks/graph_workflow_bench.py
 
 # Run the LangGraph O(1) counter-reducer ablation
 python3 tests/benchmarks/graph_workflow_benchmarks/graph_workflow_bench.py \
-  --lg-reducer counter \
+  --lg-reducer counter --impls langgraph --skip-imports \
   --out tests/benchmarks/graph_workflow_benchmarks/results/langgraph_counter_reducer.json
+
+# Run the worker-cap ablation (the swarms 14.0.0 default bound)
+python3 tests/benchmarks/graph_workflow_benchmarks/graph_workflow_bench.py \
+  --impls swarms-networkx,swarms-rustworkx --skip-imports --max-parallel-nodes 11 \
+  --out tests/benchmarks/graph_workflow_benchmarks/results/swarms_capped_workers.json
 
 # Regenerate figures, tables, and statistics
 python3 tests/benchmarks/graph_workflow_benchmarks/graphworkflow_paper/analysis/analyze.py
@@ -243,7 +261,7 @@ The published evaluation environment was:
 - macOS 15.7.7 on ARM64
 - 12 CPU cores
 - Python 3.12.3
-- Swarms 14.0.0 at revision `daa3368f`
+- Swarms 17.0.0, the PyPI release (the archived comparison used swarms 14.0.0 at revision `daa3368f`)
 - LangGraph 1.0.4
 - NetworkX 3.5
 - rustworkx 0.17.1
@@ -256,7 +274,7 @@ GraphWorkflow currently favors predictable static plans over dynamic control flo
 
 ## Paper
 
-The complete 22-page manuscript includes the formal execution model, correctness argument, compilation complexity proof, scheduler design, backend implementation, complete benchmark methodology, distributional statistics, reducer ablation, limitations, and reproduction guide.
+The complete 25-page manuscript includes the formal execution model, correctness argument, compilation complexity proof, scheduler design, backend implementation, complete benchmark methodology, distributional statistics, reducer and worker-cap ablations, a release-over-release comparison, an end-to-end run with real agents, limitations, and reproduction guide.
 
 **[Download or view `main.pdf`](./main.pdf)**
 
@@ -269,7 +287,7 @@ If this work is useful in your research, please cite:
   title   = {GraphWorkflow: A Low-Overhead Compile-Once Graph Execution Engine for Multi-Agent Systems},
   author  = {Gomez, Kye and Chaudhary, Adi and Gazali, Ayaan and Stanke, Steve-Dusty Wyatt},
   year    = {2026},
-  month   = {August},
+  month   = {November},
   note    = {Swarms. Code and reproducibility artifacts available at \url{https://github.com/kyegomez/swarms}}
 }
 ```

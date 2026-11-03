@@ -313,11 +313,20 @@ class NoOpAgent:
         return "ok"
 
 
+# Optional cap on concurrently executing nodes (GraphWorkflow's
+# ``max_parallel_nodes``). None keeps the library default, which since
+# swarms 17 is the width of the widest layer (one thread per sibling node).
+_MAX_PARALLEL_NODES = None
+
+
 def swarms_build(n: int, edges, backend: str, auto_compile: bool):
     """Construct a GraphWorkflow with ``n`` no-op agents and the given edges."""
     from swarms.structs.graph_workflow import GraphWorkflow
 
-    wf = GraphWorkflow(auto_compile=auto_compile, backend=backend)
+    kwargs = {}
+    if _MAX_PARALLEL_NODES is not None:
+        kwargs["max_parallel_nodes"] = _MAX_PARALLEL_NODES
+    wf = GraphWorkflow(auto_compile=auto_compile, backend=backend, **kwargs)
     for i in range(n):
         wf.add_node(NoOpAgent(f"n{i}"))
     for src, dst in edges:
@@ -611,6 +620,15 @@ def main() -> None:
             "to isolate reducer cost from orchestration cost."
         ),
     )
+    ap.add_argument(
+        "--max-parallel-nodes",
+        type=int,
+        default=None,
+        help=(
+            "cap GraphWorkflow's concurrently executing nodes; default keeps "
+            "the library default (widest layer width in swarms >= 17)"
+        ),
+    )
     ap.add_argument("--skip-imports", action="store_true")
     ap.add_argument(
         "--out",
@@ -618,6 +636,9 @@ def main() -> None:
         help="where to write raw results JSON (a .md report goes beside it)",
     )
     args = ap.parse_args()
+
+    global _MAX_PARALLEL_NODES
+    _MAX_PARALLEL_NODES = args.max_parallel_nodes
 
     sizes = [int(s) for s in args.sizes.split(",")]
     impls = [s.strip() for s in args.impls.split(",")]
@@ -650,6 +671,7 @@ def main() -> None:
             "warmup": args.warmup,
             "topologies": topologies,
             "lg_reducer": args.lg_reducer,
+            "max_parallel_nodes": args.max_parallel_nodes,
         },
         "impls": impls,
         "imports": {},
