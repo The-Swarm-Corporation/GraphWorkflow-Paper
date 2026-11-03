@@ -222,19 +222,6 @@ $ OPENAI_API_KEY=... python benchmarks/agent_execution_bench.py   # real agents,
 
 The [benchmarks README](./benchmarks/README.md) covers the methodology: how GC is handled, how imports are timed, the fairness controls, and environment provenance. Raw samples for every cell are in [`benchmarks/results/`](./benchmarks/results/).
 
-## Todo
-
-- [x] compile-once plan with an inline path for single-node layers
-- [x] NetworkX and rustworkx backends
-- [x] per-layer checkpointing, nested workflows, multi-loop refinement
-- [x] lazy imports
-- [x] layer-wide thread pool for network-bound fan-outs
-- [ ] edge-triggered ready-set scheduler (removes the layer barrier when node latencies are skewed)
-- [ ] native async execution (`arun` currently runs in a thread)
-- [ ] conditional edges via compiled guard sub-plans
-- [ ] distributed execution across processes and machines
-- [ ] benchmarks at 10^3 - 10^4 nodes, with memory and CPU traces
-
 ## Citations
 
 ```bibtex
